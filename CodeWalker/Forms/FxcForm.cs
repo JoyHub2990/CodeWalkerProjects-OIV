@@ -36,6 +36,17 @@ namespace CodeWalker.Forms
             if (TypeFilterComboBox.Items.Count > 0)
                 TypeFilterComboBox.SelectedIndex = 0;
             UpdateAwcModeUi(awcMode: false);
+            this.Activated += (s, e) => RefreshEditModeUi();
+        }
+
+        private bool IsEditable => AwcShader != null && (exploreForm?.EditMode ?? false);
+
+        private void RefreshEditModeUi()
+        {
+            if (AwcShader == null) return;
+            bool editable = IsEditable;
+            SaveMenuItem.Enabled = editable && rpfFileEntry != null;
+            ImportCsoMenuItem.Enabled = editable && SelectedAwcShader != null;
         }
 
 
@@ -47,12 +58,12 @@ namespace CodeWalker.Forms
 
         private void UpdateAwcModeUi(bool awcMode)
         {
-            // Menu items only meaningful in AWC mode
-            SaveMenuItem.Enabled = awcMode;
+            // Menu items only meaningful in AWC mode. Save / Import are further
+            // gated on RPF Explorer's edit mode in RefreshEditModeUi() and on
+            // selection in ShaderContextMenu_Opening.
+            SaveMenuItem.Enabled = false;
             SaveAsMenuItem.Enabled = awcMode;
             ExportAllMenuItem.Enabled = awcMode;
-            // Per-shader items live on the right-click context menu and are
-            // gated on selection — see ShaderContextMenu_Opening.
 
             // Search/type filter only for AWC (FXC list is small and unsegmented).
             // SearchPanel is docked Top; toggling visibility lets the docked
@@ -132,6 +143,7 @@ namespace CodeWalker.Forms
             DetailsPropertyGrid.SelectedObject = awc;
 
             RebuildShadersList();
+            RefreshEditModeUi();
 
             StatusLabel.Text = BuildAwcStatus();
         }
@@ -364,7 +376,10 @@ namespace CodeWalker.Forms
         {
             bool hasSelection = AwcShader != null && SelectedAwcShader != null;
             ExportCsoMenuItem.Enabled = hasSelection;
-            ImportCsoMenuItem.Enabled = hasSelection;
+            ImportCsoMenuItem.Enabled = hasSelection && IsEditable;
+            ImportCsoMenuItem.ToolTipText = (hasSelection && !IsEditable)
+                ? "Enable Edit Mode in RPF Explorer to import shaders."
+                : null;
             if (AwcShader == null) e.Cancel = true; // hide menu entirely in FXC mode
         }
 
@@ -384,6 +399,12 @@ namespace CodeWalker.Forms
 
         private void ImportCsoMenuItem_Click(object sender, EventArgs e)
         {
+            if (!IsEditable)
+            {
+                MessageBox.Show("Enable Edit Mode in RPF Explorer to modify AWC files.",
+                    "Edit Mode required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             var s = SelectedAwcShader;
             if (s == null) { MessageBox.Show("Select a shader to replace."); return; }
             using (var ofd = new OpenFileDialog())
@@ -452,6 +473,12 @@ namespace CodeWalker.Forms
         private void SaveMenuItem_Click(object sender, EventArgs e)
         {
             if (AwcShader == null) return;
+            if (!IsEditable)
+            {
+                MessageBox.Show("Enable Edit Mode in RPF Explorer to save AWC files back to the archive.",
+                    "Edit Mode required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             if (rpfFileEntry == null)
             {
                 SaveAsMenuItem_Click(sender, e);
