@@ -816,13 +816,7 @@ namespace CodeWalker.OIVInstaller
         /// </summary>
         private void ApplyXmlAddOperation(XmlDocument xmlDoc, OivXmlAddOperation addOp, List<XmlEditOperation> trackOps)
         {
-            // Check if content already exists (avoid duplicates)
             string contentTrimmed = addOp.Content.Trim();
-            if (xmlDoc.InnerXml.Contains(contentTrimmed))
-            {
-                Log($"  Skipping XPath add (already exists): {contentTrimmed.Substring(0, Math.Min(50, contentTrimmed.Length))}...");
-                return;
-            }
 
             // Find target node using XPath
             var targetNode = xmlDoc.SelectSingleNode(addOp.XPath);
@@ -832,44 +826,59 @@ namespace CodeWalker.OIVInstaller
                 return;
             }
 
+            string appendMode = addOp.Append ?? "Last";
+
+            // Determine the container that will actually receive the new node.
+            // For Before/After the new node becomes a sibling of the target, so the
+            // container is the target's parent. For First/Last it's the target itself.
+            XmlNode container;
+            if (appendMode.Equals("Before", StringComparison.OrdinalIgnoreCase) ||
+                appendMode.Equals("After", StringComparison.OrdinalIgnoreCase))
+            {
+                if (targetNode.ParentNode == null)
+                {
+                    Log($"  WARNING: Cannot insert {appendMode.ToLowerInvariant()} root node: {addOp.XPath}");
+                    return;
+                }
+                container = targetNode.ParentNode;
+            }
+            else
+            {
+                container = targetNode;
+            }
+
+            // Scope the duplicate check to the immediate insertion container only.
+            // Why: a global xmlDoc.InnerXml.Contains(...) check incorrectly skipped
+            // legitimate adds where the same content was being inserted under multiple
+            // different parents (e.g. same vehicle name added to several popgroups).
+            if (IsDuplicateInContainer(xmlDoc, container, addOp.Content))
+            {
+                Log($"  Skipping XPath add (already exists in target container): {contentTrimmed.Substring(0, Math.Min(50, contentTrimmed.Length))}...");
+                return;
+            }
+
             // Create new node from content
             var fragment = xmlDoc.CreateDocumentFragment();
             fragment.InnerXml = "\r\n\t\t" + addOp.Content + "\r\n\t";
-            
-            string appendMode = addOp.Append ?? "Last";
-            
+
             // Append based on position
             if (appendMode.Equals("First", StringComparison.OrdinalIgnoreCase))
             {
-                // Add as first child of selected node
                 targetNode.PrependChild(fragment);
                 Log($"  Added at start of {addOp.XPath}: {contentTrimmed.Substring(0, Math.Min(50, contentTrimmed.Length))}...");
             }
             else if (appendMode.Equals("Before", StringComparison.OrdinalIgnoreCase))
             {
-                // Add as sibling before selected node
-                if (targetNode.ParentNode == null)
-                {
-                    Log($"  WARNING: Cannot insert before root node: {addOp.XPath}");
-                    return;
-                }
                 targetNode.ParentNode.InsertBefore(fragment, targetNode);
                 Log($"  Added before {addOp.XPath}: {contentTrimmed.Substring(0, Math.Min(50, contentTrimmed.Length))}...");
             }
             else if (appendMode.Equals("After", StringComparison.OrdinalIgnoreCase))
             {
-                // Add as sibling after selected node
-                if (targetNode.ParentNode == null)
-                {
-                    Log($"  WARNING: Cannot insert after root node: {addOp.XPath}");
-                    return;
-                }
                 targetNode.ParentNode.InsertAfter(fragment, targetNode);
                 Log($"  Added after {addOp.XPath}: {contentTrimmed.Substring(0, Math.Min(50, contentTrimmed.Length))}...");
             }
             else // Last or default
             {
-                // Add as last child of selected node
                 targetNode.AppendChild(fragment);
                 Log($"  Added to {addOp.XPath}: {contentTrimmed.Substring(0, Math.Min(50, contentTrimmed.Length))}...");
             }
@@ -885,6 +894,61 @@ namespace CodeWalker.OIVInstaller
             });
         }
 
+
+        /// <summary>
+        /// Returns true if the immediate children of <paramref name="container"/> already include
+        /// every top-level element from <paramref name="content"/> (whitespace-insensitive).
+        /// Used to skip true sibling-level duplicates without blocking the same content from
+        /// being added under a different parent elsewhere in the document.
+        /// </summary>
+        private static bool IsDuplicateInContainer(XmlDocument xmlDoc, XmlNode container, string content)
+        {
+            if (container == null || string.IsNullOrWhiteSpace(content)) return false;
+
+            XmlDocumentFragment probe;
+            try
+            {
+                probe = xmlDoc.CreateDocumentFragment();
+                probe.InnerXml = content;
+            }
+            catch (XmlException)
+            {
+                // Content isn't well-formed XML on its own (e.g. raw text fragment).
+                // Fall back to a direct text comparison against container's inner XML.
+                return NormalizeXmlForCompare(container.InnerXml).Contains(NormalizeXmlForCompare(content));
+            }
+
+            var newKeys = new List<string>();
+            foreach (XmlNode n in probe.ChildNodes)
+            {
+                if (n.NodeType == XmlNodeType.Element)
+                {
+                    newKeys.Add(NormalizeXmlForCompare(n.OuterXml));
+                }
+            }
+            if (newKeys.Count == 0) return false;
+
+            var existingKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (XmlNode child in container.ChildNodes)
+            {
+                if (child.NodeType == XmlNodeType.Element)
+                {
+                    existingKeys.Add(NormalizeXmlForCompare(child.OuterXml));
+                }
+            }
+
+            foreach (var key in newKeys)
+            {
+                if (!existingKeys.Contains(key)) return false;
+            }
+            return true;
+        }
+
+        private static string NormalizeXmlForCompare(string xml)
+        {
+            if (string.IsNullOrEmpty(xml)) return string.Empty;
+            return Regex.Replace(xml, @">\s+<", "><").Trim();
+        }
 
         private void ApplyXmlReplaceOperation(XmlDocument xmlDoc, OivXmlReplaceOperation op, List<XmlEditOperation> trackOps)
         {
