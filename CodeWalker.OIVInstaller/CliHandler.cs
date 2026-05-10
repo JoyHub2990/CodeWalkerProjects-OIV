@@ -431,33 +431,38 @@ namespace CodeWalker.OIVInstaller
 
         /// <summary>
         /// Checks for essential modding files based on game version and warns if missing.
-        /// Legacy: dinput8.dll + OpenIV.asi
-        /// Enhanced: xinput1_4.dll + OpenRPF.asi
+        /// Legacy:   dinput8.dll  + (OpenIV.asi  | RageOpenV.asi)
+        /// Enhanced: xinput1_4.dll + (OpenRPF.asi | RageOpenV.asi)
         /// </summary>
         private static void CheckModdingEnvironment(string gameFolder)
         {
             // Detect game version first
-            bool isGen9 = File.Exists(Path.Combine(gameFolder, "eboot.bin")) || 
+            bool isGen9 = File.Exists(Path.Combine(gameFolder, "eboot.bin")) ||
                           File.Exists(Path.Combine(gameFolder, "GTA5_Enhanced.exe"));
 
             string asiLoaderName = isGen9 ? "xinput1_4.dll" : "dinput8.dll";
-            string openAsiName = isGen9 ? "OpenRPF.asi" : "OpenIV.asi";
+            string versionSpecificAsi = isGen9 ? "OpenRPF.asi" : "OpenIV.asi";
 
             bool hasAsiLoader = File.Exists(Path.Combine(gameFolder, asiLoaderName));
-            bool hasOpenAsi = File.Exists(Path.Combine(gameFolder, openAsiName));
-            
+            bool hasVersionAsi = File.Exists(Path.Combine(gameFolder, versionSpecificAsi));
+            // RageOpenV is a unified open-source loader that satisfies either Legacy
+            // (OpenIV.asi) or Enhanced (OpenRPF.asi) with a single file.
+            bool hasRageOpenV = File.Exists(Path.Combine(gameFolder, "RageOpenV.asi"));
+            bool hasModsLoader = hasVersionAsi || hasRageOpenV;
+            string presentLoaderName = hasRageOpenV ? "RageOpenV.asi" : (hasVersionAsi ? versionSpecificAsi : null);
+
             Console.WriteLine("Modding Environment:");
             string versionStr = isGen9 ? "Enhanced (Gen9)" : "Legacy";
             Console.WriteLine($"  Detected Version: {versionStr}");
             Console.WriteLine($"  ASI Loader ({asiLoaderName}): {(hasAsiLoader ? "Present" : "MISSING")}");
-            Console.WriteLine($"  Mods Loader ({openAsiName}):   {(hasOpenAsi ? "Present" : "MISSING")}");
-            
-            if (!hasAsiLoader || !hasOpenAsi)
+            Console.WriteLine($"  Mods Loader ({versionSpecificAsi} or RageOpenV.asi): {(hasModsLoader ? $"Present ({presentLoaderName})" : "MISSING")}");
+
+            if (!hasAsiLoader || !hasModsLoader)
             {
                 Console.WriteLine();
                 Console.WriteLine("============================================================");
                 Console.WriteLine("WARNING: Essential modding files are missing!");
-                Console.WriteLine($"Mods will NOT load in-game without {asiLoaderName} and {openAsiName}.");
+                Console.WriteLine($"Mods will NOT load in-game without {asiLoaderName} and either {versionSpecificAsi} or RageOpenV.asi.");
                 Console.WriteLine("============================================================");
             }
             Console.WriteLine();

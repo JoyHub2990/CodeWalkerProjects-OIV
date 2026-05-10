@@ -38,6 +38,7 @@ namespace CodeWalker.OIVInstaller
             this.btnBrowseGame = new System.Windows.Forms.Button();
             this.lblGameStatus = new System.Windows.Forms.Label();
             this.lblAsiStatus = new System.Windows.Forms.Label();
+            this.chkSkipBackup = new System.Windows.Forms.CheckBox();
             this.panelInfo = new System.Windows.Forms.Panel();
             this.lblInfoTitle = new System.Windows.Forms.Label();
             this.lblCreator = new System.Windows.Forms.Label();
@@ -52,6 +53,7 @@ namespace CodeWalker.OIVInstaller
             this.linkYoutube = new System.Windows.Forms.LinkLabel();
             this.lblWarning = new System.Windows.Forms.Label();
             this.panelLog = new System.Windows.Forms.Panel();
+            this.progressBar = new CodeWalker.OIVInstaller.SmoothProgressBar();
             this.rtbLog = new System.Windows.Forms.RichTextBox();
             this.btnDone = new System.Windows.Forms.Button();
             this.panelHeader.SuspendLayout();
@@ -193,29 +195,40 @@ namespace CodeWalker.OIVInstaller
             this.picIcon.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
             this.picIcon.TabIndex = 0;
             this.picIcon.TabStop = false;
-            // 
+            //
             // panelLog
-            // 
+            //
             this.panelLog.Controls.Add(this.btnDone);
             this.panelLog.Controls.Add(this.rtbLog);
+            this.panelLog.Controls.Add(this.progressBar);
             this.panelLog.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panelLog.Location = new System.Drawing.Point(20, 15);
             this.panelLog.Name = "panelLog";
             this.panelLog.Size = new System.Drawing.Size(660, 330);
             this.panelLog.TabIndex = 10;
             this.panelLog.Visible = false;
-            // 
+            //
+            // progressBar
+            //
+            this.progressBar.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.progressBar.BarColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(120)))), ((int)(((byte)(215)))));
+            this.progressBar.TrackColor = System.Drawing.Color.FromArgb(((int)(((byte)(232)))), ((int)(((byte)(232)))), ((int)(((byte)(232)))));
+            this.progressBar.Location = new System.Drawing.Point(0, 0);
+            this.progressBar.Name = "progressBar";
+            this.progressBar.Size = new System.Drawing.Size(660, 4);
+            this.progressBar.TabIndex = 2;
+            //
             // rtbLog
-            // 
+            //
             this.rtbLog.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
             this.rtbLog.BackColor = System.Drawing.Color.White;
             this.rtbLog.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.rtbLog.Font = new System.Drawing.Font("Consolas", 9F);
             this.rtbLog.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(30)))), ((int)(((byte)(30)))), ((int)(((byte)(30)))));
-            this.rtbLog.Location = new System.Drawing.Point(0, 0);
+            this.rtbLog.Location = new System.Drawing.Point(0, 12);
             this.rtbLog.Name = "rtbLog";
             this.rtbLog.ReadOnly = true;
-            this.rtbLog.Size = new System.Drawing.Size(660, 290);
+            this.rtbLog.Size = new System.Drawing.Size(660, 278);
             this.rtbLog.TabIndex = 0;
             this.rtbLog.Text = "";
             // 
@@ -265,6 +278,7 @@ namespace CodeWalker.OIVInstaller
             // panelPaths
             // 
             this.panelPaths.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.panelPaths.Controls.Add(this.chkSkipBackup);
             this.panelPaths.Controls.Add(this.lblAsiStatus);
             this.panelPaths.Controls.Add(this.lblGameStatus);
             this.panelPaths.Controls.Add(this.btnBrowseGame);
@@ -275,7 +289,7 @@ namespace CodeWalker.OIVInstaller
             this.panelPaths.Controls.Add(this.lblOivLabel);
             this.panelPaths.Location = new System.Drawing.Point(20, 55);
             this.panelPaths.Name = "panelPaths";
-            this.panelPaths.Size = new System.Drawing.Size(660, 110);
+            this.panelPaths.Size = new System.Drawing.Size(660, 125);
             this.panelPaths.TabIndex = 1;
             // 
             // lblOivLabel
@@ -355,9 +369,9 @@ namespace CodeWalker.OIVInstaller
             this.lblGameStatus.Name = "lblGameStatus";
             this.lblGameStatus.Size = new System.Drawing.Size(0, 13);
             this.lblGameStatus.TabIndex = 6;
-            // 
+            //
             // lblAsiStatus
-            // 
+            //
             this.lblAsiStatus.AutoSize = true;
             this.lblAsiStatus.Font = new System.Drawing.Font("Segoe UI", 8F);
             this.lblAsiStatus.ForeColor = System.Drawing.Color.Gray;
@@ -365,6 +379,21 @@ namespace CodeWalker.OIVInstaller
             this.lblAsiStatus.Name = "lblAsiStatus";
             this.lblAsiStatus.Size = new System.Drawing.Size(0, 13);
             this.lblAsiStatus.TabIndex = 7;
+            //
+            // chkSkipBackup
+            //
+            this.chkSkipBackup.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.chkSkipBackup.AutoSize = true;
+            this.chkSkipBackup.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.chkSkipBackup.FlatStyle = System.Windows.Forms.FlatStyle.System;
+            this.chkSkipBackup.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            this.chkSkipBackup.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(95)))), ((int)(((byte)(95)))), ((int)(((byte)(95)))));
+            this.chkSkipBackup.Location = new System.Drawing.Point(380, 100);
+            this.chkSkipBackup.Name = "chkSkipBackup";
+            this.chkSkipBackup.Size = new System.Drawing.Size(280, 17);
+            this.chkSkipBackup.TabIndex = 8;
+            this.chkSkipBackup.Text = "Skip backup (faster, can’t uninstall later)";
+            this.chkSkipBackup.UseVisualStyleBackColor = true;
             // 
             // panelInfo
             // 
@@ -563,6 +592,7 @@ namespace CodeWalker.OIVInstaller
         private System.Windows.Forms.Button btnBrowseGame;
         private System.Windows.Forms.Label lblGameStatus;
         private System.Windows.Forms.Label lblAsiStatus;
+        private System.Windows.Forms.CheckBox chkSkipBackup;
         private System.Windows.Forms.Panel panelInfo;
         private System.Windows.Forms.Label lblInfoTitle;
         private System.Windows.Forms.Label lblCreator;
@@ -576,6 +606,7 @@ namespace CodeWalker.OIVInstaller
         private System.Windows.Forms.LinkLabel linkWeb;
         private System.Windows.Forms.LinkLabel linkYoutube;
         private System.Windows.Forms.Panel panelLog;
+        private CodeWalker.OIVInstaller.SmoothProgressBar progressBar;
         private System.Windows.Forms.RichTextBox rtbLog;
         private System.Windows.Forms.Button btnDone;
     }

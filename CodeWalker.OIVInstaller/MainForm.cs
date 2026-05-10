@@ -16,12 +16,73 @@ namespace CodeWalker.OIVInstaller
         private string _spGameFolder = ""; // Actual GTA V folder
         private string _gameFolderLegacy = "";
         private string _gameFolderEnhanced = "";
-        private int _marqueeStep = 0;
-        private int _marqueeWait = 0;
+        private MarqueePainter _marquee;
+        private Animator _formFadeAnimator;
 
         public MainForm()
         {
             InitializeComponent();
+            // Hide the original lblPackageName — we paint the title text ourselves on
+            // pnlTitleClipping for sub-pixel scrolling smoothness. The Label still owns
+            // font/color which the painter mirrors.
+            this.Opacity = 0; // fade in on Shown
+            AttachButtonAnimations();
+            SetupMarqueePainter();
+            AttachSkipBackupConfirm();
+        }
+
+        private void AttachSkipBackupConfirm()
+        {
+            // First-time confirm: if the user ticks Skip Backup, make sure they understand
+            // that this install won't appear in Manage Mods and can't be reverted from the UI.
+            // No persistence — they get the prompt every time they re-enable it within a session.
+            bool confirmed = false;
+            chkSkipBackup.CheckedChanged += (s, e) =>
+            {
+                if (!chkSkipBackup.Checked) { confirmed = false; return; }
+                if (confirmed) return;
+                var result = MessageBox.Show(
+                    "Skipping backup creation means:\n\n" +
+                    "• No backup of the game files this install touches\n" +
+                    "• This install won't show up in Manage Mods\n" +
+                    "• You won't be able to uninstall it through this app\n\n" +
+                    "Continue with backup disabled?",
+                    "Skip Backup",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+                if (result == DialogResult.Yes) { confirmed = true; }
+                else { chkSkipBackup.Checked = false; }
+            };
+        }
+
+        private void SetupMarqueePainter()
+        {
+            // Replace the legacy 1px-step Timer marquee with a custom-painted, time-based
+            // sub-pixel renderer. lblPackageName becomes invisible but its font/color are
+            // still the source of truth so theme code keeps working unchanged.
+            lblPackageName.Visible = false;
+            _marquee = new MarqueePainter(pnlTitleClipping, lblPackageName.Font)
+            {
+                ForeColor = lblPackageName.ForeColor,
+                Text = lblPackageName.Text,
+            };
+            _marquee.Start();
+            // Stop the legacy timer (still wired in Designer); keep the field around so
+            // the Designer-generated InitializeComponent doesn't need editing.
+            tmrMarquee.Stop();
+        }
+
+        // Mirror the (still-hidden) lblPackageName state onto the marquee painter so
+        // that DisplayPackageInfo's existing assignments to lblPackageName.Text / ForeColor
+        // continue to drive the visible title without changes elsewhere.
+        private void SyncMarqueeFromLabel()
+        {
+            if (_marquee == null) return;
+            _marquee.Text = lblPackageName.Text ?? "";
+            _marquee.ForeColor = lblPackageName.ForeColor;
+            _marquee.Font = lblPackageName.Font;
+            _marquee.ResetPosition();
         }
 
         private void MainForm_Load(object sender, EventArgs e)
@@ -33,9 +94,60 @@ namespace CodeWalker.OIVInstaller
                 txtOivPath.Text = args[1];
                 LoadOivPackage(args[1]);
             }
-            
+
             LoadConfig();
-            tmrMarquee.Start();
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            // Smooth opacity fade-in. Cheap polish — masks the brief paint-storm of the
+            // first WM_PAINT pass and gives the window a "settled" entrance.
+            _formFadeAnimator?.Dispose();
+            _formFadeAnimator = new Animator();
+            _formFadeAnimator.Tween(220, t =>
+            {
+                if (this.IsDisposed) return;
+                this.Opacity = t;
+            }, () =>
+            {
+                if (!this.IsDisposed) this.Opacity = 1.0;
+            }, Easing.EaseOutCubic);
+        }
+
+        /// <summary>
+        /// Wires smooth color-blend hover/press animations onto the form's buttons.
+        /// Header buttons are white-on-accent; browse buttons sit on the white content
+        /// area so their hover shades are slightly different.
+        /// </summary>
+        private void AttachButtonAnimations()
+        {
+            // White header buttons (Install / Manage Mods / Docs) — hover slightly off-white,
+            // press a touch deeper. Subtle so it reads as polish, not as state change.
+            var headerIdle = Color.White;
+            var headerHover = Color.FromArgb(240, 244, 250);
+            var headerPress = Color.FromArgb(225, 232, 242);
+
+            ButtonHoverAnimator.Attach(btnInstall, headerIdle, headerHover, headerPress);
+            ButtonHoverAnimator.Attach(btnUninstall, headerIdle, headerHover, headerPress);
+            ButtonHoverAnimator.Attach(btnDocs, headerIdle, headerHover, headerPress);
+
+            // Browse buttons use the system control face — give them a faint blue tint on hover.
+            var browseIdle = SystemColors.Control;
+            var browseHover = Color.FromArgb(225, 235, 248);
+            var browsePress = Color.FromArgb(205, 220, 240);
+
+            // These default to UseVisualStyleBackColor=true; flip off so our BackColor wins.
+            btnBrowseOiv.UseVisualStyleBackColor = false;
+            btnBrowseGame.UseVisualStyleBackColor = false;
+            btnBrowseOiv.FlatStyle = FlatStyle.Flat;
+            btnBrowseGame.FlatStyle = FlatStyle.Flat;
+            btnBrowseOiv.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            btnBrowseGame.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+
+            ButtonHoverAnimator.Attach(btnBrowseOiv, browseIdle, browseHover, browsePress);
+            ButtonHoverAnimator.Attach(btnBrowseGame, browseIdle, browseHover, browsePress);
+            ButtonHoverAnimator.Attach(btnDone, headerIdle, headerHover, headerPress);
         }
 
         private void MainForm_DragEnter(object sender, DragEventArgs e)
@@ -217,42 +329,11 @@ namespace CodeWalker.OIVInstaller
             }
         }
 
-        private void tmrMarquee_Tick(object sender, EventArgs e)
-        {
-            if (lblPackageName.Width <= pnlTitleClipping.Width)
-            {
-                lblPackageName.Left = 0;
-                return;
-            }
-
-            if (_marqueeWait > 0)
-            {
-                _marqueeWait--;
-                return;
-            }
-
-            if (_marqueeStep == 0) // Moving Left
-            {
-                lblPackageName.Left -= 1;
-                // If text right edge touches panel right edge
-                if (lblPackageName.Right <= pnlTitleClipping.Width)
-                {
-                    lblPackageName.Left = pnlTitleClipping.Width - lblPackageName.Width;
-                    _marqueeStep = 1;
-                    _marqueeWait = 40; // 2 seconds
-                }
-            }
-            else // Moving Right
-            {
-                lblPackageName.Left += 1;
-                if (lblPackageName.Left >= 0)
-                {
-                    lblPackageName.Left = 0;
-                    _marqueeStep = 0;
-                    _marqueeWait = 40;
-                }
-            }
-        }
+        // Designer wires this handler to tmrMarquee.Tick. Marquee scrolling now lives in
+        // MarqueePainter (custom paint with sub-pixel positioning); the timer itself is
+        // stopped in SetupMarqueePainter so this body never actually runs. Kept as a
+        // no-op so the Designer-generated event subscription still resolves.
+        private void tmrMarquee_Tick(object sender, EventArgs e) { }
         
         private void ValidateGameFolder()
         {
@@ -269,6 +350,12 @@ namespace CodeWalker.OIVInstaller
             
             bool hasOpenIV = File.Exists(Path.Combine(_gameFolder, "OpenIV.asi"));
             bool hasOpenRPF = File.Exists(Path.Combine(_gameFolder, "OpenRPF.asi"));
+            // RageOpenV is a unified open-source replacement (https://github.com/Chiheb-Bacha/RageOpenV)
+            // that covers both Legacy (gen8, formerly OpenIV.asi) and Enhanced (gen9, formerly OpenRPF.asi)
+            // mods-folder loading. Treat its presence as satisfying either requirement.
+            bool hasRageOpenV = File.Exists(Path.Combine(_gameFolder, "RageOpenV.asi"));
+            bool hasLegacyLoader = hasOpenIV || hasRageOpenV;
+            bool hasEnhancedLoader = hasOpenRPF || hasRageOpenV;
             bool hasDinput8 = File.Exists(Path.Combine(_gameFolder, "dinput8.dll"));
             bool hasXinput = File.Exists(Path.Combine(_gameFolder, "xinput1_4.dll"));
             
@@ -306,10 +393,10 @@ namespace CodeWalker.OIVInstaller
                     lblGameStatus.Text = "✓ Valid GTA V folder (Enhanced)";
                     lblGameStatus.ForeColor = Color.Green;
                     
-                    if (!hasXinput) 
+                    if (!hasXinput)
                         asiStatus = "⚠ ASI Loader (xinput1_4.dll) missing";
-                    else if (!hasOpenRPF) 
-                        asiStatus = "⚠ OpenRPF.asi missing - mods folder disabled";
+                    else if (!hasEnhancedLoader)
+                        asiStatus = "⚠ OpenRPF.asi or RageOpenV.asi missing - mods folder disabled";
                 }
             }
             else if (hasLegacy)
@@ -323,11 +410,11 @@ namespace CodeWalker.OIVInstaller
                 {
                     lblGameStatus.Text = "✓ Valid GTA V folder (Legacy)";
                     lblGameStatus.ForeColor = Color.Green;
-                    
-                    if (!hasDinput8) 
+
+                    if (!hasDinput8)
                          asiStatus = "⚠ ASI Loader (dinput8.dll) missing";
-                    else if (!hasOpenIV) 
-                        asiStatus = "⚠ OpenIV.asi missing - mods folder disabled";
+                    else if (!hasLegacyLoader)
+                        asiStatus = "⚠ OpenIV.asi or RageOpenV.asi missing - mods folder disabled";
                 }
             }
             else
@@ -344,7 +431,14 @@ namespace CodeWalker.OIVInstaller
             }
             else if (hasEnhanced || hasLegacy)
             {
-                 if (hasEnhanced && hasOpenRPF)
+                 // Prefer to surface RageOpenV when present since it's the unified loader
+                 // covering both versions; otherwise fall back to the version-specific name.
+                 if (hasRageOpenV)
+                 {
+                     lblAsiStatus.Text = "✓ RageOpenV.asi installed";
+                     lblAsiStatus.ForeColor = Color.Green;
+                 }
+                 else if (hasEnhanced && hasOpenRPF)
                  {
                      lblAsiStatus.Text = "✓ OpenRPF.asi installed";
                      lblAsiStatus.ForeColor = Color.Green;
@@ -356,7 +450,7 @@ namespace CodeWalker.OIVInstaller
                  }
                  else
                  {
-                     lblAsiStatus.Text = ""; 
+                     lblAsiStatus.Text = "";
                  }
             }
             else
@@ -574,8 +668,23 @@ namespace CodeWalker.OIVInstaller
             
             // Additional links
             DisplayAuthorLinks();
+
+            // Sync the marquee with whatever lblPackageName ended up showing — text and
+            // (theme-driven) ForeColor — and reset its scroll position for a fresh sweep.
+            SyncMarqueeFromLabel();
+
+            // Stagger a slide-in for the major sections so the layout reveals progressively
+            // instead of snapping. Skip while the form isn't visible yet (cmd-line load
+            // path) — the slide can't be perceived before the window paints.
+            if (this.Visible)
+            {
+                SlideAnimator.SlideUp(rtbDescription, fromOffsetY: 12, durationMs: 280, delayMs: 0);
+                SlideAnimator.SlideUp(panelPaths,    fromOffsetY: 14, durationMs: 300, delayMs: 60);
+                SlideAnimator.SlideUp(panelInfo,     fromOffsetY: 16, durationMs: 320, delayMs: 120);
+                SlideAnimator.SlideUp(panelAdditional, fromOffsetY: 16, durationMs: 320, delayMs: 150);
+            }
         }
-        
+
         private void DisplayAuthorLinks()
         {
             if (_package == null) return;
@@ -797,9 +906,19 @@ namespace CodeWalker.OIVInstaller
                 }
             }
 
+            // Snapshot the skip-backup choice before we leave the UI thread.
+            bool skipBackup = chkSkipBackup.Checked;
+
             // Switch to log view
             ShowInstallLog();
-            
+
+            // Bridge OivInstaller progress reports into the SmoothProgressBar on the UI thread.
+            var progress = new Progress<InstallProgress>(p =>
+            {
+                if (progressBar.IsDisposed) return;
+                progressBar.SetValue(p.Percent);
+            });
+
             // Run installation in background to keep UI responsive
             Task.Run(() =>
             {
@@ -808,9 +927,11 @@ namespace CodeWalker.OIVInstaller
                     Log("Initializing installation...");
                     Log($"Package: {_package.Metadata.Name}");
                     Log($"Target: {_gameFolder}");
-                    
+                    if (skipBackup)
+                        Log("Backup creation: DISABLED (Manage Mods will not see this install)");
+
                     var installer = new OivInstaller(_gameFolder, _package, message => Log(message));
-                    installer.Install(null, packagesToUninstall, uninstallMode);
+                    installer.Install(progress, packagesToUninstall, uninstallMode, skipBackup);
                     
                     Log(""); // Spacer
                     Log("Installation completed successfully.");
@@ -841,37 +962,49 @@ namespace CodeWalker.OIVInstaller
         
         private void ShowInstallLog()
         {
-            // main threaded UI updates
-            panelPaths.Visible = false;
-            panelInfo.Visible = false;
-            panelAdditional.Visible = false;
-            rtbDescription.Visible = false;
-            
-            panelLog.Visible = true;
-            panelLog.BringToFront();
-            
+            // Reset the progress bar before the crossfade so the new view comes in clean.
+            progressBar.Reset();
             rtbLog.Clear();
             btnDone.Enabled = false;
-            btnDone.Visible = false; 
-            
-            // Disable main buttons
+            btnDone.Visible = false;
+
+            // Disable main buttons during install
             btnInstall.Enabled = false;
             btnUninstall.Enabled = false;
+
+            // Crossfade panelContent's children: hide the main view, reveal the log view.
+            ViewTransitions.CrossFade(panelContent, () =>
+            {
+                panelPaths.Visible = false;
+                panelInfo.Visible = false;
+                panelAdditional.Visible = false;
+                rtbDescription.Visible = false;
+
+                panelLog.Visible = true;
+                panelLog.BringToFront();
+            });
         }
-        
+
         private void ShowMainView()
         {
-            panelLog.Visible = false;
-            
-            panelPaths.Visible = true;
-            panelInfo.Visible = true;
-            panelAdditional.Visible = true;
-            rtbDescription.Visible = true;
-            
-            // Re-enable main buttons
+            ViewTransitions.CrossFade(panelContent, () =>
+            {
+                panelLog.Visible = false;
+
+                panelPaths.Visible = true;
+                panelInfo.Visible = true;
+                panelAdditional.Visible = true;
+                rtbDescription.Visible = true;
+            });
+
+            // Re-enable main buttons. ShowInstallLog forced btnUninstall.Enabled=false during
+            // the install — restore the default enabled state here so ValidateGameFolder's
+            // early-return paths (empty _gameFolder, FiveM package) don't leave the button
+            // stuck disabled. ValidateGameFolder will demote it again if the folder is invalid.
             btnInstall.Enabled = true;
-            UpdateInstallButton(); 
-            ValidateGameFolder(); // Re-validate to enable Manage Mods if applicable
+            btnUninstall.Enabled = true;
+            UpdateInstallButton();
+            ValidateGameFolder();
         }
         
         private void Log(string message)
@@ -887,6 +1020,8 @@ namespace CodeWalker.OIVInstaller
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             _package?.Dispose();
+            _marquee?.Dispose();
+            _formFadeAnimator?.Dispose();
             base.OnFormClosing(e);
         }
     }

@@ -175,7 +175,7 @@ REMAINING TODO:
 4. Enhanced Installation Features
    [ ] Implement 'Enhanced' mod installation flow (Vortex-style).
        - Allow installing not only a single mod package but also choosing optional components.
-   [ ] Automatic dependencies installation (OpenIV.asi, OpenRPF.asi, ASI Loader).
+   [ ] Automatic dependencies installation (OpenIV.asi / OpenRPF.asi / RageOpenV.asi, ASI Loader).
 
 ";
         }
