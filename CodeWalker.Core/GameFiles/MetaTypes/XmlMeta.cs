@@ -170,6 +170,14 @@ namespace CodeWalker.GameFiles
         }
         public static byte[] GetAwcData(XmlDocument doc, string fpathin)
         {
+            // Shader-library AWCs (SGD2) share the .awc extension with audio AWCs.
+            // Route on the root element tag the XML emitter chose.
+            var rootName = doc?.DocumentElement?.Name;
+            if (string.Equals(rootName, "AwcShaderLibrary", StringComparison.Ordinal))
+            {
+                var awcsh = XmlAwcShader.GetAwcShader(doc, fpathin);
+                return awcsh.Save();
+            }
             var awc = XmlAwc.GetAwc(doc, fpathin);
             if (awc.Streams == null) return null;
             return awc.Save();

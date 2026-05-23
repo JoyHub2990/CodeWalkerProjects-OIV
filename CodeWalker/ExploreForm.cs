@@ -4844,6 +4844,16 @@ namespace CodeWalker
             FileSizeText = "";
             Attributes = "";
             ImageIndex = FileType.ImageIndex;
+            // .awc is overloaded: audio Wave Container vs SGD2 shader library.
+            // R*'s shader libraries follow the "sga_*.awc" naming convention,
+            // so relabel those without paying for a magic-sniff extract.
+            if (FileType.Extension == ".awc"
+                && Name != null
+                && Name.StartsWith("sga_", StringComparison.OrdinalIgnoreCase))
+            {
+                FileTypeText = "FXDB Shader Library";
+                ImageIndex = 9; // reuse .fxc "Compiled Shaders" icon instead of the audio one
+            }
             if (File != null)
             {
                 FileSize = File.GetFileSize();

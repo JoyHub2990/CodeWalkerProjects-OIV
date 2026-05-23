@@ -134,6 +134,13 @@ namespace CodeWalker.GameFiles
             }
             else if (fnl.EndsWith(".awc"))
             {
+                // SGD2 shader-library AWCs share the extension with audio AWCs.
+                // Sniff the magic to route to the right XML emitter.
+                if (data != null && data.Length >= 4 && BitConverter.ToUInt32(data, 0) == AwcShaderFile.MagicSGD2)
+                {
+                    AwcShaderFile awcsh = RpfFile.GetFile<AwcShaderFile>(e, data);
+                    return GetXml(awcsh, out filename, outputfolder);
+                }
                 AwcFile awc = RpfFile.GetFile<AwcFile>(e, data);
                 return GetXml(awc, out filename, outputfolder);
             }
@@ -311,6 +318,12 @@ namespace CodeWalker.GameFiles
             var fn = (awc?.Name) ?? "";
             filename = fn + ".xml";
             return AwcXml.GetXml(awc, outputfolder);
+        }
+        public static string GetXml(AwcShaderFile awc, out string filename, string outputfolder)
+        {
+            var fn = (awc?.Name) ?? "";
+            filename = fn + ".xml";
+            return AwcShaderXml.GetXml(awc, outputfolder);
         }
         public static string GetXml(FxcFile fxc, out string filename, string outputfolder)
         {

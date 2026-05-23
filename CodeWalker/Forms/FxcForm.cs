@@ -32,8 +32,6 @@ namespace CodeWalker.Forms
         public FxcForm()
         {
             InitializeComponent();
-            if (TypeFilterComboBox.Items.Count > 0)
-                TypeFilterComboBox.SelectedIndex = 0;
             UpdateAwcModeUi(awcMode: false);
             this.Activated += (s, e) => RefreshEditModeUi();
         }
@@ -51,9 +49,11 @@ namespace CodeWalker.Forms
 
         private void UpdateFormTitle()
         {
-            string suffix = AwcShader != null ? "AWC Shader Library Viewer" : "FXC Viewer";
+            string suffix = AwcShader != null ? "FXDB Shader Library Viewer" : "FXC Viewer";
             Text = fileName + " - " + suffix + " - CodeWalker by dexyfex";
         }
+
+        private bool AwcHasEffects => AwcShader != null && AwcShader.Effects != null && AwcShader.Effects.Length > 0;
 
         private void UpdateAwcModeUi(bool awcMode)
         {
@@ -72,17 +72,18 @@ namespace CodeWalker.Forms
             // Hide Type column in FXC mode
             ShadersTypeColumn.Width = awcMode ? 40 : 0;
 
-            // Hide Techniques tab in AWC mode (AWC has no techniques)
-            if (awcMode)
-            {
-                if (MainTabControl.TabPages.Contains(TechniquesTabPage))
-                    MainTabControl.TabPages.Remove(TechniquesTabPage);
-            }
-            else
-            {
-                if (!MainTabControl.TabPages.Contains(TechniquesTabPage))
-                    MainTabControl.TabPages.Insert(1, TechniquesTabPage);
-            }
+            // Tree view replaces the flat list when AWC has a decoded effects
+            // database; otherwise (FXC mode or AWC fallback) the flat list is
+            // shown. The two controls share the same dock-fill panel.
+            bool useTree = awcMode && AwcHasEffects;
+            EffectsTreeView.Visible = useTree;
+            ShadersListView.Visible = !useTree;
+
+            // Re-enable the Techniques tab in AWC mode now that we decode them.
+            // (The tab is informational only — the new effects tree is the
+            // primary navigation surface.)
+            if (!MainTabControl.TabPages.Contains(TechniquesTabPage))
+                MainTabControl.TabPages.Insert(1, TechniquesTabPage);
         }
 
 
@@ -141,7 +142,14 @@ namespace CodeWalker.Forms
 
             DetailsPropertyGrid.SelectedObject = awc;
 
-            RebuildShadersList();
+            if (AwcHasEffects)
+            {
+                RebuildEffectsTree();
+            }
+            else
+            {
+                RebuildShadersList();
+            }
             RefreshEditModeUi();
 
             StatusLabel.Text = BuildAwcStatus();
@@ -150,13 +158,15 @@ namespace CodeWalker.Forms
         private string BuildAwcStatus()
         {
             if (AwcShader == null) return "Ready";
-            return AwcShader.TotalShaderCount + " shaders ("
+            string shaders = AwcShader.TotalShaderCount + " shaders ("
                 + AwcShader.VertexCount + " VS, "
                 + AwcShader.PixelCount + " PS, "
                 + AwcShader.GeometryCount + " GS, "
                 + AwcShader.DomainCount + " DS, "
                 + AwcShader.HullCount + " HS, "
                 + AwcShader.ComputeCount + " CS)";
+            if (AwcHasEffects) shaders = AwcShader.EffectCount + " effects, " + shaders;
+            return shaders;
         }
 
         private void RebuildShadersList()
@@ -169,11 +179,9 @@ namespace CodeWalker.Forms
 
                 string filter = SearchTextBox.Text?.Trim();
                 bool hasFilter = !string.IsNullOrEmpty(filter);
-                string typeFilter = (TypeFilterComboBox.SelectedItem as string) ?? "All";
 
                 foreach (var s in AwcShader.AllShaders())
                 {
-                    if (typeFilter != "All" && !MatchesStage(s.Stage, typeFilter)) continue;
                     if (hasFilter && (s.Name == null || s.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)) continue;
 
                     var item = ShadersListView.Items.Add(s.StageName);
@@ -187,20 +195,239 @@ namespace CodeWalker.Forms
             }
         }
 
-        private static bool MatchesStage(AwcShaderStage stage, string label)
+        // ---------- AWC effects tree ----------
+
+        private void RebuildEffectsTree()
         {
-            switch (label)
+            EffectsTreeView.BeginUpdate();
+            try
             {
-                case "Vertex":   return stage == AwcShaderStage.Vertex;
-                case "Pixel":    return stage == AwcShaderStage.Pixel;
-                case "Geometry": return stage == AwcShaderStage.Geometry;
-                case "Domain":   return stage == AwcShaderStage.Domain;
-                case "Hull":     return stage == AwcShaderStage.Hull;
-                case "Compute":  return stage == AwcShaderStage.Compute;
-                default: return true;
+                EffectsTreeView.Nodes.Clear();
+                if (!AwcHasEffects) return;
+
+                string filter = SearchTextBox.Text?.Trim();
+                bool hasFilter = !string.IsNullOrEmpty(filter);
+
+                // Look up table of global shader index -> AwcShader per stage.
+                var vs = AwcShader.VertexShaders ?? new AwcShader[0];
+                var ps = AwcShader.PixelShaders ?? new AwcShader[0];
+                var gs = AwcShader.GeometryShaders ?? new AwcShader[0];
+                var ds = AwcShader.DomainShaders ?? new AwcShader[0];
+                var hs = AwcShader.HullShaders ?? new AwcShader[0];
+                var cs = AwcShader.ComputeShaders ?? new AwcShader[0];
+
+                foreach (var eff in AwcShader.Effects)
+                {
+                    if (!EffectMatchesFilter(eff, filter, hasFilter)) continue;
+
+                    var effNode = new TreeNode(BuildEffectNodeText(eff));
+                    effNode.Tag = eff;
+
+                    AddStageNodes(effNode, "Vertex Shaders",   eff.VsIndices, vs, AwcShaderStage.Vertex);
+                    AddStageNodes(effNode, "Pixel Shaders",    eff.PsIndices, ps, AwcShaderStage.Pixel);
+                    AddStageNodes(effNode, "Geometry Shaders", eff.GsIndices, gs, AwcShaderStage.Geometry);
+                    AddStageNodes(effNode, "Domain Shaders",   eff.DsIndices, ds, AwcShaderStage.Domain);
+                    AddStageNodes(effNode, "Hull Shaders",     eff.HsIndices, hs, AwcShaderStage.Hull);
+                    AddStageNodes(effNode, "Compute Shaders",  eff.CsIndices, cs, AwcShaderStage.Compute);
+
+                    if (eff.Techniques != null && eff.Techniques.Length > 0)
+                    {
+                        var techRoot = effNode.Nodes.Add("Techniques (" + eff.Techniques.Length + ")");
+                        techRoot.Tag = null;
+                        foreach (var t in eff.Techniques)
+                        {
+                            var tn = new TreeNode(t.Name + " (" + (t.Passes?.Length ?? 0) + " passes)");
+                            tn.Tag = t;
+                            if (t.Passes != null)
+                            {
+                                foreach (var pass in t.Passes)
+                                {
+                                    var pn = new TreeNode(pass.Name ?? string.Empty);
+                                    pn.Tag = pass;
+                                    tn.Nodes.Add(pn);
+                                }
+                            }
+                            techRoot.Nodes.Add(tn);
+                        }
+                    }
+
+                    // Effect States subfolder — lists rasterizer/depth-stencil/
+                    // blend/sampler state-block counts plus the render-shader-set
+                    // count. Even though the state-block bodies aren't currently
+                    // decoded for SGD2, the counts on AwcEffect expose the size
+                    // metadata that's available.
+                    int rsc = eff.RasterizerStateCount, dssc = eff.DepthStencilStateCount;
+                    int bsc = eff.BlendStateCount, sssc = eff.SamplerStateCount, rssc = eff.RenderShaderSetCount;
+                    if ((rsc | dssc | bsc | sssc | rssc) > 0)
+                    {
+                        var statesRoot = effNode.Nodes.Add("Effect States");
+                        statesRoot.Tag = null;
+                        statesRoot.Nodes.Add("Rasterizer (" + rsc + ")").Tag = null;
+                        statesRoot.Nodes.Add("DepthStencil (" + dssc + ")").Tag = null;
+                        statesRoot.Nodes.Add("Blend (" + bsc + ")").Tag = null;
+                        statesRoot.Nodes.Add("Sampler (" + sssc + ")").Tag = null;
+                        statesRoot.Nodes.Add("RenderShaderSets (" + rssc + ")").Tag = null;
+                    }
+
+                    if (eff.SamplerNames != null && eff.SamplerNames.Length > 0)
+                    {
+                        var sampRoot = effNode.Nodes.Add("Samplers: " + string.Join(", ", eff.SamplerNames));
+                        sampRoot.Tag = null;
+                    }
+
+                    EffectsTreeView.Nodes.Add(effNode);
+                }
+            }
+            finally
+            {
+                EffectsTreeView.EndUpdate();
             }
         }
 
+        private static string BuildEffectNodeText(AwcEffect e)
+        {
+            return e.Name + " (" + e.TotalShaderCount + " shaders, " + e.TechniqueCount + " techniques)";
+        }
+
+        private static bool EffectMatchesFilter(AwcEffect e, string filter, bool hasFilter)
+        {
+            if (!hasFilter) return true;
+            if (e.Name != null && e.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (e.Techniques != null)
+            {
+                foreach (var t in e.Techniques)
+                {
+                    if (t.Name != null && t.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                }
+            }
+            return false;
+        }
+
+        private void AddStageNodes(TreeNode parent, string label, uint[] indices, AwcShader[] globalArr, AwcShaderStage stage)
+        {
+            if (indices == null || indices.Length == 0) return;
+
+            var stageNode = new TreeNode(label + " (" + indices.Length + ")");
+            stageNode.Tag = null;
+            foreach (var idx in indices)
+            {
+                AwcShader s = (idx < globalArr.Length) ? globalArr[idx] : null;
+                string text = s != null ? s.Name : ("<missing #" + idx + ">");
+                var node = new TreeNode(text);
+                node.Tag = s;
+                stageNode.Nodes.Add(node);
+            }
+            parent.Nodes.Add(stageNode);
+        }
+
+        private void EffectsTreeView_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            var tag = e.Node?.Tag;
+            if (tag is AwcShader s)
+            {
+                LoadAwcShader(s);
+            }
+            else if (tag is AwcEffect eff)
+            {
+                LoadEffectSummary(eff);
+            }
+            else if (tag is AwcEffectTechnique tech)
+            {
+                LoadTechniqueSummary(tech);
+            }
+            else if (tag is AwcEffectPass pass)
+            {
+                LoadPassSummary(pass);
+            }
+            else
+            {
+                // Grouping nodes ("Vertex Shaders", "Techniques", "Samplers")
+                LoadAwcShader((AwcShader)null);
+            }
+        }
+
+        private void LoadEffectSummary(AwcEffect eff)
+        {
+            SelectedAwcShader = null;
+            DetailsPropertyGrid.SelectedObject = eff;
+            ShaderPanel.Enabled = true;
+            // Also populate the Techniques tab with this effect's techniques.
+            TechniquesListView.Items.Clear();
+            if (eff.Techniques != null)
+            {
+                foreach (var t in eff.Techniques)
+                {
+                    var item = TechniquesListView.Items.Add(t.Name ?? string.Empty);
+                    item.Tag = t;
+                }
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("// Effect: " + eff.Name);
+            sb.AppendLine("// DataBufferSize: 0x" + eff.DataBufferSize.ToString("X8") + " (" + eff.DataBufferSize + ")");
+            sb.AppendLine("// Shaders: " + eff.TotalShaderCount
+                + "  (VS=" + eff.VsCount + " PS=" + eff.PsCount + " GS=" + eff.GsCount
+                + " DS=" + eff.DsCount + " HS=" + eff.HsCount + " CS=" + eff.CsCount + ")");
+            sb.AppendLine("// Techniques: " + eff.TechniqueCount);
+            sb.AppendLine("// Samplers:   " + eff.SamplerCount);
+            sb.AppendLine("// PropEntries:" + (eff.PropEntries?.Length ?? 0));
+            sb.AppendLine("// States:     Rasterizer=" + eff.RasterizerStateCount
+                + " DepthStencil=" + eff.DepthStencilStateCount
+                + " Blend=" + eff.BlendStateCount
+                + " Sampler=" + eff.SamplerStateCount
+                + " RenderShaderSets=" + eff.RenderShaderSetCount);
+            sb.AppendLine();
+            if (eff.SamplerNames != null && eff.SamplerNames.Length > 0)
+            {
+                sb.AppendLine("// Sampler names:");
+                foreach (var n in eff.SamplerNames) sb.AppendLine("//   " + n);
+                sb.AppendLine();
+            }
+            if (eff.Techniques != null)
+            {
+                foreach (var t in eff.Techniques)
+                {
+                    sb.AppendLine("technique " + t.Name);
+                    sb.AppendLine("{");
+                    if (t.Passes != null)
+                    {
+                        foreach (var p in t.Passes)
+                        {
+                            sb.AppendLine("    pass " + p.Name + " { }");
+                        }
+                    }
+                    sb.AppendLine("}");
+                }
+            }
+            ShaderTextBox.Text = sb.ToString();
+        }
+
+        private void LoadTechniqueSummary(AwcEffectTechnique tech)
+        {
+            SelectedAwcShader = null;
+            DetailsPropertyGrid.SelectedObject = tech;
+            ShaderPanel.Enabled = true;
+            var sb = new StringBuilder();
+            sb.AppendLine("technique " + tech.Name);
+            sb.AppendLine("{");
+            if (tech.Passes != null)
+            {
+                foreach (var p in tech.Passes)
+                {
+                    sb.AppendLine("    pass " + p.Name + " { }");
+                }
+            }
+            sb.AppendLine("}");
+            ShaderTextBox.Text = sb.ToString();
+        }
+
+        private void LoadPassSummary(AwcEffectPass pass)
+        {
+            SelectedAwcShader = null;
+            DetailsPropertyGrid.SelectedObject = pass;
+            ShaderPanel.Enabled = true;
+            ShaderTextBox.Text = "// pass " + (pass.Name ?? string.Empty);
+        }
 
         private void LoadShader(FxcShader s)
         {
@@ -331,30 +558,32 @@ namespace CodeWalker.Forms
 
         private void TechniquesListView_SelectedIndexChanged(object sender, EventArgs e)
         {
-            FxcTechnique t = null;
-            if (TechniquesListView.SelectedItems.Count == 1)
-            {
-                t = TechniquesListView.SelectedItems[0].Tag as FxcTechnique;
-            }
-            LoadTechnique(t);
+            if (TechniquesListView.SelectedItems.Count != 1) { LoadTechnique(null); return; }
+            var tag = TechniquesListView.SelectedItems[0].Tag;
+            if (tag is FxcTechnique ft) { LoadTechnique(ft); }
+            else if (tag is AwcEffectTechnique at) { LoadTechniqueSummary(at); }
+            else { LoadTechnique(null); }
         }
 
         // ---------- AWC: search / filter ----------
 
         private void SearchTextBox_TextChanged(object sender, EventArgs e)
         {
-            if (AwcShader != null) RebuildShadersList();
-        }
-
-        private void TypeFilterComboBox_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            if (AwcShader != null) RebuildShadersList();
+            if (AwcShader == null) return;
+            if (AwcHasEffects) RebuildEffectsTree();
+            else RebuildShadersList();
         }
 
         // ---------- AWC: export / import ----------
 
         private void ShaderContextMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            // When the tree is active, derive the current SelectedAwcShader from
+            // the tree selection so the menu items reflect the right object.
+            if (EffectsTreeView.Visible && EffectsTreeView.SelectedNode != null)
+            {
+                SelectedAwcShader = EffectsTreeView.SelectedNode.Tag as AwcShader;
+            }
             bool hasSelection = AwcShader != null && SelectedAwcShader != null;
             ExportCsoMenuItem.Enabled = hasSelection;
             ImportCsoMenuItem.Enabled = hasSelection && IsEditable;
@@ -489,7 +718,7 @@ namespace CodeWalker.Forms
             if (AwcShader == null) return;
             using (var sfd = new SaveFileDialog())
             {
-                sfd.Filter = "AWC Shader Library (*.awc)|*.awc|All files (*.*)|*.*";
+                sfd.Filter = "FXDB Shader Library (*.awc)|*.awc|All files (*.*)|*.*";
                 sfd.FileName = fileName ?? "shader.awc";
                 if (sfd.ShowDialog() != DialogResult.OK) return;
                 byte[] data = AwcShader.Save();

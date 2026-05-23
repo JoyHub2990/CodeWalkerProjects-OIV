@@ -38,9 +38,9 @@
             this.ShadersListPanel = new System.Windows.Forms.Panel();
             this.SearchPanel = new System.Windows.Forms.Panel();
             this.SearchTextBox = new System.Windows.Forms.TextBox();
-            this.TypeFilterComboBox = new System.Windows.Forms.ComboBox();
             this.SearchLabel = new System.Windows.Forms.Label();
             this.ShaderPanel = new System.Windows.Forms.Panel();
+            this.EffectsTreeView = new System.Windows.Forms.TreeView();
             this.ShadersListView = new System.Windows.Forms.ListView();
             this.ShadersNameColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.ShadersTypeColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
@@ -142,6 +142,7 @@
             //
             // ShadersListPanel
             //
+            this.ShadersListPanel.Controls.Add(this.EffectsTreeView);
             this.ShadersListPanel.Controls.Add(this.ShadersListView);
             this.ShadersListPanel.Controls.Add(this.SearchPanel);
             this.ShadersListPanel.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -153,7 +154,6 @@
             // SearchPanel
             //
             this.SearchPanel.Controls.Add(this.SearchTextBox);
-            this.SearchPanel.Controls.Add(this.TypeFilterComboBox);
             this.SearchPanel.Controls.Add(this.SearchLabel);
             this.SearchPanel.Dock = System.Windows.Forms.DockStyle.Top;
             this.SearchPanel.Location = new System.Drawing.Point(0, 0);
@@ -180,26 +180,6 @@
             this.SearchTextBox.TabIndex = 1;
             this.SearchTextBox.TextChanged += new System.EventHandler(this.SearchTextBox_TextChanged);
             //
-            // TypeFilterComboBox
-            //
-            this.TypeFilterComboBox.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.TypeFilterComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.TypeFilterComboBox.FormattingEnabled = true;
-            this.TypeFilterComboBox.Items.AddRange(new object[] {
-            "All",
-            "Vertex",
-            "Pixel",
-            "Geometry",
-            "Domain",
-            "Hull",
-            "Compute"});
-            this.TypeFilterComboBox.Location = new System.Drawing.Point(53, 30);
-            this.TypeFilterComboBox.Name = "TypeFilterComboBox";
-            this.TypeFilterComboBox.Size = new System.Drawing.Size(178, 21);
-            this.TypeFilterComboBox.TabIndex = 2;
-            this.TypeFilterComboBox.SelectedIndexChanged += new System.EventHandler(this.TypeFilterComboBox_SelectedIndexChanged);
-            //
             // splitContainer1.Panel2
             // 
             this.splitContainer1.Panel2.Controls.Add(this.ShaderPanel);
@@ -216,7 +196,19 @@
             this.ShaderPanel.Name = "ShaderPanel";
             this.ShaderPanel.Size = new System.Drawing.Size(531, 448);
             this.ShaderPanel.TabIndex = 0;
-            // 
+            //
+            // EffectsTreeView
+            //
+            this.EffectsTreeView.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.EffectsTreeView.HideSelection = false;
+            this.EffectsTreeView.Location = new System.Drawing.Point(0, 56);
+            this.EffectsTreeView.Name = "EffectsTreeView";
+            this.EffectsTreeView.Size = new System.Drawing.Size(235, 392);
+            this.EffectsTreeView.TabIndex = 2;
+            this.EffectsTreeView.Visible = false;
+            this.EffectsTreeView.ContextMenuStrip = this.ShaderContextMenu;
+            this.EffectsTreeView.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.EffectsTreeView_AfterSelect);
+            //
             // ShadersListView
             //
             this.ShadersListView.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
@@ -523,6 +515,7 @@
         private System.Windows.Forms.SplitContainer splitContainer1;
         private System.Windows.Forms.Panel ShaderPanel;
         private System.Windows.Forms.ListView ShadersListView;
+        private System.Windows.Forms.TreeView EffectsTreeView;
         private System.Windows.Forms.ColumnHeader ShadersNameColumn;
         private FastColoredTextBoxNS.FastColoredTextBox ShaderTextBox;
         private System.Windows.Forms.StatusStrip statusStrip1;
@@ -536,7 +529,6 @@
         private System.Windows.Forms.Panel ShadersListPanel;
         private System.Windows.Forms.Panel SearchPanel;
         private System.Windows.Forms.TextBox SearchTextBox;
-        private System.Windows.Forms.ComboBox TypeFilterComboBox;
         private System.Windows.Forms.Label SearchLabel;
         private System.Windows.Forms.ColumnHeader ShadersTypeColumn;
         private System.Windows.Forms.MenuStrip MainMenu;

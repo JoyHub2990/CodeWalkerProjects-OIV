@@ -15,7 +15,12 @@
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+  </PropertyGroup>
+
   <ItemGroup>
+    <PackageReference Include="System.Resources.Extensions" Version="8.0.0" />
     <PackageReference Include="DockPanelSuite.ThemeVS2015" Version="3.0.6" />
     <PackageReference Include="FCTB" Version="2.16.24" />
     <PackageReference Include="SharpDX" Version="4.2.0" />
