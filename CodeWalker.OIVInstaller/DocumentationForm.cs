@@ -139,6 +139,15 @@ namespace CodeWalker.OIVInstaller
         - Each user add-on has a checkbox; tick to enable, untick to disable.
           Disabling is non-destructive — only the dlclist entry is removed,
           the folder stays in place so re-enabling is one click.
+        - Toggles are STAGED — clicking a checkbox does NOT write to
+          dlclist.xml immediately. The row's status changes to
+          'Enabled (pending)' / 'Disabled (pending)' and the Apply button
+          at the bottom-right shows the pending count, e.g. 'Apply (3)'.
+        - Click 'Apply' to commit every pending change in one batch.
+          Per-row failures are reported and the list reloads from disk so
+          the UI always reflects ground truth.
+        - 'Reload' re-reads dlclist and resets all checkboxes — useful for
+          discarding pending changes without applying them.
         - Vanilla Rockstar DLCs (mpheist, mp2025_*, patchday*, etc.) appear
           on a pale grey row with italic text and a 'Vanilla DLC' status —
           read-only, so a stray click can't disable a stock pack.
@@ -221,6 +230,8 @@ COMPLETED FEATURES:
 [x] Idle R→G→B header pulse while no package is loaded
 [x] DLC Add-on management (Manage Mods → DLC Add-ons tab):
     - enable/disable user add-ons by toggling their dlclist.xml entry
+    - staged toggles + explicit Apply / Reload buttons (no surprise writes
+      when ListView fires deferred LVN_ITEMCHANGED notifications)
     - vanilla Rockstar DLCs rendered as read-only ""Vanilla DLC"" rows
     - orphan dlclist entries flagged separately
 [x] DLC Add-on installation by drag-and-drop:

@@ -165,17 +165,20 @@ namespace CodeWalker.OIVInstaller
             });
         }
 
-        // Retries a delegate on IOException with exponential-ish backoff. update.rpf
-        // can briefly lock under antivirus / Windows Search after we write to it, and
-        // the next user toggle will collide unless we give it a moment. ~2s total
-        // ceiling so the UI doesn't appear hung.
+        // Retries a delegate on Win32 ERROR_SHARING_VIOLATION (HResult == 0x80070020)
+        // with exponential-ish backoff. update.rpf can briefly lock under antivirus /
+        // Windows Search right after we write to it, and the next read/write would
+        // otherwise fail with a "file in use" error. ~2s total ceiling so the UI
+        // doesn't appear hung. Non-sharing IOExceptions (FileNotFound, etc.) bubble
+        // up immediately — retry won't help those.
         private static T WithIoRetry<T>(Func<T> body, int maxAttempts = 6)
         {
+            const int ERROR_SHARING_VIOLATION = unchecked((int)0x80070020);
             int delayMs = 80;
             for (int attempt = 1; ; attempt++)
             {
                 try { return body(); }
-                catch (IOException) when (attempt < maxAttempts)
+                catch (IOException ex) when (attempt < maxAttempts && ex.HResult == ERROR_SHARING_VIOLATION)
                 {
                     GC.Collect();
                     GC.WaitForPendingFinalizers();
@@ -260,36 +263,55 @@ namespace CodeWalker.OIVInstaller
 
         // -- internals -------------------------------------------------------
 
+        /// <summary>
+        /// Last exception encountered while reading dlclist.xml, if any. Cleared on
+        /// each successful <see cref="ListAddons"/> call. UI uses this to show a
+        /// real error instead of silently rendering "everything disabled".
+        /// </summary>
+        public Exception LastReadError { get; private set; }
+
         private HashSet<string> ReadEnabledNames()
         {
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            LastReadError = null;
             if (!ModsFolderExists) return set;
 
             try
             {
-                EnsureKeysLoaded();
-                var rpf = new RpfFile(UpdateRpfPath, "mods\\update\\update.rpf");
-                rpf.ScanStructure(null, _ => { });
-                var fileEntry = FindDlclistEntry(rpf);
-                if (fileEntry == null) return set;
-
-                byte[] data = fileEntry.File.ExtractFile(fileEntry);
-                string xmlText = TrimBom(Encoding.UTF8.GetString(data));
-
-                var doc = new XmlDocument();
-                doc.LoadXml(xmlText);
-                var items = doc.SelectNodes("/SMandatoryPacksData/Paths/Item");
-                if (items == null) return set;
-
-                foreach (XmlNode item in items)
+                // Same retry envelope as SetEnabled — update.rpf can be transiently
+                // locked by antivirus / Windows Search right after a previous write,
+                // and the read would otherwise silently return an empty set and make
+                // every add-on appear disabled.
+                WithIoRetry(() =>
                 {
-                    string name = ExtractName(item.InnerText);
-                    if (!string.IsNullOrEmpty(name)) set.Add(name);
-                }
+                    EnsureKeysLoaded();
+                    var rpf = new RpfFile(UpdateRpfPath, "mods\\update\\update.rpf");
+                    rpf.ScanStructure(null, _ => { });
+                    var fileEntry = FindDlclistEntry(rpf);
+                    if (fileEntry == null)
+                        throw new FileNotFoundException("dlclist.xml not found inside mods\\update\\update.rpf.");
+
+                    byte[] data = fileEntry.File.ExtractFile(fileEntry);
+                    if (data == null || data.Length == 0)
+                        throw new InvalidDataException("dlclist.xml extracted to empty bytes — RPF may be corrupted.");
+
+                    string xmlText = TrimBom(Encoding.UTF8.GetString(data));
+                    var doc = new XmlDocument();
+                    doc.LoadXml(xmlText);
+                    var items = doc.SelectNodes("/SMandatoryPacksData/Paths/Item");
+                    if (items == null) return true;
+
+                    foreach (XmlNode item in items)
+                    {
+                        string name = ExtractName(item.InnerText);
+                        if (!string.IsNullOrEmpty(name)) set.Add(name);
+                    }
+                    return true;
+                });
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort read — surface errors only on write.
+                LastReadError = ex;
             }
             return set;
         }

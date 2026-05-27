@@ -54,7 +54,10 @@ namespace CodeWalker.OIVInstaller
             }
             else
             {
-                LoadAddons();
+                // Defer the first LoadAddons until after the window handle exists —
+                // LoadAddons uses BeginInvoke to flush queued ListView notifications,
+                // which requires a handle. Form.Load fires after handle creation.
+                this.Load += (s, e) => LoadAddons();
             }
         }
 
@@ -275,6 +278,18 @@ namespace CodeWalker.OIVInstaller
         {
             if (_addonManager == null) return;
 
+            // ListView posts LVN_ITEMCHANGED notifications via the message queue
+            // when items are added / their Checked state is set. Those messages
+            // fire AFTER LoadAddons returns to the message pump — so detaching
+            // handlers inside LoadAddons and re-attaching in `finally` isn't
+            // enough on its own: the late notifications hit live handlers and get
+            // treated as "user clicked the checkbox", writing spurious disables
+            // to dlclist.xml. The fix is to also defer the *re-attach* to the
+            // tail of the message queue with BeginInvoke, so the queued
+            // notifications drain first (with handlers still detached) and only
+            // then do we resubscribe.
+            lstAddons.ItemCheck    -= lstAddons_ItemCheck;
+            lstAddons.ItemChecked  -= lstAddons_ItemChecked;
             _suppressAddonCheck = true;
             try
             {
@@ -291,11 +306,17 @@ namespace CodeWalker.OIVInstaller
 
                 _addonList = _addonManager.ListAddons();
 
+                if (_addonManager.LastReadError != null)
+                {
+                    lblAddonsHint.Text = "dlclist.xml read failed — " + _addonManager.LastReadError.Message;
+                    lblAddonsHint.ForeColor = System.Drawing.Color.FromArgb(180, 30, 30);
+                    lstAddons.EndUpdate();
+                    return;
+                }
+                lblAddonsHint.ForeColor = System.Drawing.Color.Gray;
+
                 foreach (var info in _addonList)
                 {
-                    // IsStockDLC takes priority over the folder-existence check —
-                    // most Rockstar vanilla packs have no separate dlcpacks\ folder
-                    // because their content lives inside update.rpf itself.
                     string status =
                         info.IsStockDLC ? "Vanilla DLC" :
                         !info.FolderExists ? "Orphan" :
@@ -306,26 +327,25 @@ namespace CodeWalker.OIVInstaller
                         "(no folder — orphan dlclist entry)";
                     var item = new ListViewItem(new[] { info.Name, status, folder })
                     {
-                        Checked = info.IsEnabled,
                         Tag = info,
                     };
                     if (info.IsStockDLC)
                     {
-                        // Vanilla DLC visual: pale grey row + italic text so the user
-                        // sees at a glance "don't touch — this is Rockstar's content".
-                        // ItemCheck cancels any toggle attempt, but the styling alone
-                        // should make it obvious nothing here is user-actionable.
                         item.BackColor = System.Drawing.Color.FromArgb(245, 246, 248);
                         item.ForeColor = System.Drawing.Color.FromArgb(120, 120, 130);
                         item.Font = new System.Drawing.Font(lstAddons.Font, System.Drawing.FontStyle.Italic);
                     }
                     else if (!info.FolderExists)
                     {
-                        // Non-stock orphan: user installed something, deleted the folder
-                        // by hand, but the dlclist entry lingered. Read-only too.
                         item.ForeColor = System.Drawing.Color.Gray;
                     }
                     lstAddons.Items.Add(item);
+                    // Set Checked AFTER Add — setting it in the property initializer
+                    // before the item is in any ListView leads to ItemChecked firing
+                    // in ways that can outlive our suppress flag. Once the item is
+                    // attached, Checked-set events route correctly and we've detached
+                    // the handlers anyway.
+                    item.Checked = info.IsEnabled;
                 }
 
                 // Counts: keep them mutually exclusive so the line adds up.
@@ -338,10 +358,27 @@ namespace CodeWalker.OIVInstaller
                     (stockCount > 0 ? $"  ·  {stockCount} vanilla" : "") +
                     (orphanCount > 0 ? $"  ·  {orphanCount} orphan" : "");
                 lstAddons.EndUpdate();
+
+                // After a clean reload, no row's checkbox differs from disk yet.
+                // Phantom ItemChecked events during populate (if any) get handled
+                // by the deferred re-attach in the finally block.
+                btnApplyAddons.Enabled = false;
+                btnApplyAddons.Text = "Apply";
             }
             finally
             {
-                _suppressAddonCheck = false;
+                // Defer the re-attach to the tail of the message queue. Any
+                // LVN_ITEMCHANGED notifications posted during Items.Add /
+                // Checked-set above are still in the queue at this point; they
+                // will be processed first (with handlers detached, so they have
+                // no effect), and only then will this BeginInvoke fire and
+                // resubscribe for real user interactions.
+                this.BeginInvoke((Action)(() =>
+                {
+                    _suppressAddonCheck = false;
+                    lstAddons.ItemCheck    += lstAddons_ItemCheck;
+                    lstAddons.ItemChecked  += lstAddons_ItemChecked;
+                }));
             }
         }
 
@@ -361,41 +398,113 @@ namespace CodeWalker.OIVInstaller
             }
         }
 
-        private async void lstAddons_ItemChecked(object sender, ItemCheckedEventArgs e)
+        // Click only updates the in-memory checkbox state and the row's status
+        // label. Nothing is written to dlclist.xml until the user explicitly
+        // hits Apply — this makes phantom ListView ItemChecked events harmless
+        // (worst case the user sees a "(pending)" row that doesn't reflect
+        // their intent, and clicks Reload to discard it).
+        private void lstAddons_ItemChecked(object sender, ItemCheckedEventArgs e)
         {
             if (_suppressAddonCheck) return;
+            if (e == null || e.Item == null) return;
             if (!(e.Item.Tag is AddonManager.AddonInfo info)) return;
             if (info.IsStockDLC || !info.FolderExists) return;
 
-            bool enable = e.Item.Checked;
-            // If we're already in the requested state, no-op (LoadAddons sets
-            // Checked from disk state during rebuild; that path is already guarded
-            // by _suppressAddonCheck, but treat this defensively).
-            if (info.IsEnabled == enable) return;
+            UpdateRowStatus(e.Item, info);
+            UpdateApplyButtonState();
+        }
 
-            string action = enable ? "Enabling" : "Disabling";
-            lblStatus.Text = $"{action} {info.Name}…";
-            lstAddons.Enabled = false;
-            btnRefreshAddons.Enabled = false;
-            progressBar.Visible = true;
-            progressBar.Style = ProgressBarStyle.Marquee;
+        // Sets the Status column for a user-toggleable row, marking it with
+        // "(pending)" whenever the checkbox differs from what's actually on disk.
+        private static void UpdateRowStatus(ListViewItem item, AddonManager.AddonInfo info)
+        {
+            bool dirty = item.Checked != info.IsEnabled;
+            string baseText = item.Checked ? "Enabled" : "Disabled";
+            item.SubItems[1].Text = dirty ? $"{baseText} (pending)" : baseText;
+        }
 
+        // Apply is enabled iff at least one user-toggleable row's checkbox differs
+        // from the on-disk state captured by the last LoadAddons. Defensive null
+        // checks: WinForms can reflect deferred LVN_ITEMCHANGED notifications at
+        // moments when individual items / their Tag aren't fully wired up yet.
+        private void UpdateApplyButtonState()
+        {
+            if (lstAddons == null || btnApplyAddons == null) return;
+            int pending = 0;
             try
             {
-                await Task.Run(() => _addonManager.SetEnabled(info.Name, enable));
-                info.IsEnabled = enable;
-                e.Item.SubItems[1].Text = enable ? "Enabled" : "Disabled";
-                lblStatus.Text = $"{(enable ? "Enabled" : "Disabled")} {info.Name}";
+                foreach (ListViewItem item in lstAddons.Items)
+                {
+                    if (item == null) continue;
+                    if (!(item.Tag is AddonManager.AddonInfo info)) continue;
+                    if (info.IsStockDLC || !info.FolderExists) continue;
+                    if (item.Checked != info.IsEnabled) pending++;
+                }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show($"Failed to update dlclist.xml:\n\n{ex.Message}",
-                    "Add-on toggle failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                // Roll the checkbox back to reflect actual state.
-                _suppressAddonCheck = true;
-                try { e.Item.Checked = info.IsEnabled; }
-                finally { _suppressAddonCheck = false; }
-                lblStatus.Text = "";
+                // Items collection mutated under us (e.g. mid-LoadAddons reflection).
+                // Bail; the next stable call will recompute correctly.
+                return;
+            }
+            btnApplyAddons.Enabled = pending > 0;
+            btnApplyAddons.Text = pending > 0 ? $"Apply ({pending})" : "Apply";
+        }
+
+        private async void btnApplyAddons_Click(object sender, EventArgs e)
+        {
+            // Snapshot pending changes off the UI before the await — we don't want
+            // the user toggling more rows mid-apply.
+            var changes = new List<(AddonManager.AddonInfo Info, bool Target, ListViewItem Item)>();
+            foreach (ListViewItem item in lstAddons.Items)
+            {
+                if (!(item.Tag is AddonManager.AddonInfo info)) continue;
+                if (info.IsStockDLC || !info.FolderExists) continue;
+                if (item.Checked != info.IsEnabled)
+                    changes.Add((info, item.Checked, item));
+            }
+            if (changes.Count == 0) return;
+
+            // Check for running game process — same dance as the uninstall path.
+            while (ProcessHelper.IsGameRunning(out string processName))
+            {
+                var result = MessageBox.Show(
+                    $"The game process '{processName}' is currently running.\n\n" +
+                    "Please close the game before changing dlclist.xml to prevent file locking errors.",
+                    "Game is Running",
+                    MessageBoxButtons.RetryCancel,
+                    MessageBoxIcon.Warning);
+                if (result == DialogResult.Cancel) return;
+            }
+
+            lblStatus.Text = $"Applying {changes.Count} change(s)…";
+            progressBar.Visible = true;
+            progressBar.Style = ProgressBarStyle.Marquee;
+            lstAddons.Enabled = false;
+            btnApplyAddons.Enabled = false;
+            btnRefreshAddons.Enabled = false;
+
+            int applied = 0, failed = 0;
+            var failures = new List<string>();
+            try
+            {
+                await Task.Run(() =>
+                {
+                    foreach (var c in changes)
+                    {
+                        try
+                        {
+                            _addonManager.SetEnabled(c.Info.Name, c.Target);
+                            c.Info.IsEnabled = c.Target;
+                            applied++;
+                        }
+                        catch (Exception ex)
+                        {
+                            failed++;
+                            failures.Add($"{c.Info.Name}: {ex.Message}");
+                        }
+                    }
+                });
             }
             finally
             {
@@ -403,6 +512,21 @@ namespace CodeWalker.OIVInstaller
                 lstAddons.Enabled = true;
                 btnRefreshAddons.Enabled = true;
             }
+
+            if (failed > 0)
+            {
+                MessageBox.Show(
+                    $"Applied {applied} change(s). Failed: {failed}.\n\n" + string.Join("\n", failures),
+                    "Some changes failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            lblStatus.Text = failed == 0
+                ? $"Applied {applied} change(s)."
+                : $"Applied {applied} of {applied + failed} change(s).";
+
+            // Reload from disk so the UI reflects ground truth (and any failed
+            // toggles snap back to their on-disk state).
+            LoadAddons();
         }
     }
 }

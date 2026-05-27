@@ -27,6 +27,7 @@ namespace CodeWalker.OIVInstaller
             this.colAddonStatus = new System.Windows.Forms.ColumnHeader();
             this.colAddonPath = new System.Windows.Forms.ColumnHeader();
             this.btnRefreshAddons = new System.Windows.Forms.Button();
+            this.btnApplyAddons = new System.Windows.Forms.Button();
             this.lblAddonsHint = new System.Windows.Forms.Label();
             this.btnClose = new System.Windows.Forms.Button();
             this.lblStatus = new System.Windows.Forms.Label();
@@ -93,6 +94,7 @@ namespace CodeWalker.OIVInstaller
             // tabAddons
             //
             this.tabAddons.Controls.Add(this.lblAddonsHint);
+            this.tabAddons.Controls.Add(this.btnApplyAddons);
             this.tabAddons.Controls.Add(this.btnRefreshAddons);
             this.tabAddons.Controls.Add(this.lstAddons);
             this.tabAddons.Location = new System.Drawing.Point(4, 24);
@@ -148,9 +150,22 @@ namespace CodeWalker.OIVInstaller
             this.btnRefreshAddons.Name = "btnRefreshAddons";
             this.btnRefreshAddons.Size = new System.Drawing.Size(100, 28);
             this.btnRefreshAddons.TabIndex = 1;
-            this.btnRefreshAddons.Text = "Refresh";
+            this.btnRefreshAddons.Text = "Reload";
             this.btnRefreshAddons.UseVisualStyleBackColor = true;
             this.btnRefreshAddons.Click += new System.EventHandler(this.btnRefreshAddons_Click);
+            //
+            // btnApplyAddons
+            //
+            this.btnApplyAddons.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnApplyAddons.Enabled = false;
+            this.btnApplyAddons.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+            this.btnApplyAddons.Location = new System.Drawing.Point(496, 296);
+            this.btnApplyAddons.Name = "btnApplyAddons";
+            this.btnApplyAddons.Size = new System.Drawing.Size(100, 28);
+            this.btnApplyAddons.TabIndex = 3;
+            this.btnApplyAddons.Text = "Apply";
+            this.btnApplyAddons.UseVisualStyleBackColor = true;
+            this.btnApplyAddons.Click += new System.EventHandler(this.btnApplyAddons_Click);
             //
             // lblAddonsHint
             //
@@ -233,6 +248,7 @@ namespace CodeWalker.OIVInstaller
         private System.Windows.Forms.ColumnHeader colAddonStatus;
         private System.Windows.Forms.ColumnHeader colAddonPath;
         private System.Windows.Forms.Button btnRefreshAddons;
+        private System.Windows.Forms.Button btnApplyAddons;
         private System.Windows.Forms.Label lblAddonsHint;
         private System.Windows.Forms.Button btnClose;
         private System.Windows.Forms.Label lblStatus;
