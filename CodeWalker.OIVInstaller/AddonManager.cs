@@ -339,14 +339,21 @@ namespace CodeWalker.OIVInstaller
             return null;
         }
 
-        // Extracts the bare folder name from an <Item> body, handling both formats
-        // that show up in dlclist.xml in the wild:
-        //   dlcpacks:/<name>/                  (modern)
+        // Extracts the bare folder name from an <Item> body, handling every format
+        // that shows up in dlclist.xml in the wild:
+        //   dlcpacks:/<name>/                  (modern, canonical)
+        //   dlcpacks:\<name>\                  (some installs use backslashes)
         //   platform:/dlcPacks/<name>/         (older Rockstar entries)
         private static string ExtractName(string itemText)
         {
             if (string.IsNullOrWhiteSpace(itemText)) return "";
             string s = itemText.Trim();
+
+            // Normalize backslashes to forward slashes so the rest of this method
+            // can treat both `:\` and `:/` as the same prefix terminator. Without
+            // this, entries like `dlcpacks:\22b\` would fall through and end up
+            // as the literal raw text, never matching an on-disk folder name.
+            s = s.Replace('\\', '/');
 
             // Strip everything up to and including the first ":/" so we drop the
             // protocol-style prefix (platform: or dlcpacks:).
@@ -362,7 +369,7 @@ namespace CodeWalker.OIVInstaller
                 s = s.Substring(container.Length);
             }
 
-            return s.Trim('/', '\\').Trim();
+            return s.Trim('/').Trim();
         }
 
         // Insert a new <Item> as the last child of <Paths>, copying the indentation
