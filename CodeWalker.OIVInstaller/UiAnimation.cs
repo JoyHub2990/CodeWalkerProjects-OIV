@@ -380,6 +380,65 @@ namespace CodeWalker.OIVInstaller
     }
 
     /// <summary>
+    /// Loops a target control's BackColor through an N-stop color cycle (linear
+    /// segments, wrapping at the end). Used to give the OIV installer's header
+    /// a slow rainbow shift while no package is loaded — stops the moment a
+    /// package is picked so the loaded theme color takes over cleanly.
+    /// </summary>
+    internal sealed class HeaderColorPulser : IDisposable
+    {
+        private readonly Control _host;
+        private readonly System.Windows.Forms.Timer _timer = new System.Windows.Forms.Timer { Interval = 33 };
+        private DateTime _startUtc = DateTime.UtcNow;
+
+        public Color[] Stops { get; set; }
+        public int CycleMs { get; set; } = 10000;
+
+        public HeaderColorPulser(Control host, params Color[] stops)
+        {
+            _host = host;
+            Stops = stops != null && stops.Length >= 2
+                ? stops
+                : new[] { Color.Red, Color.Lime, Color.Blue };
+            _timer.Tick += OnTick;
+        }
+
+        public void Start()
+        {
+            _startUtc = DateTime.UtcNow;
+            _timer.Start();
+        }
+
+        public void Stop() => _timer.Stop();
+
+        public bool IsRunning => _timer.Enabled;
+
+        private void OnTick(object sender, EventArgs e)
+        {
+            if (_host.IsDisposed) { _timer.Stop(); return; }
+            double phase = ((DateTime.UtcNow - _startUtc).TotalMilliseconds / CycleMs) % 1.0;
+            if (phase < 0) phase += 1.0;
+
+            int n = Stops.Length;
+            double scaled = phase * n;          // 0..n
+            int seg = (int)scaled;              // index of the current segment's "from" stop
+            if (seg >= n) seg = n - 1;
+            float localT = (float)(scaled - seg); // 0..1 within the segment
+
+            Color a = Stops[seg];
+            Color b = Stops[(seg + 1) % n];     // wraps so the last segment crossfades back to Stops[0]
+            _host.BackColor = ColorBlend.Lerp(a, b, localT);
+        }
+
+        public void Dispose()
+        {
+            _timer.Tick -= OnTick;
+            _timer.Stop();
+            _timer.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Cross-fades the contents of a container while a swap action toggles which
     /// children are visible. Captures the current state to a bitmap, overlays it,
     /// performs the swap underneath, then fades the overlay's alpha to zero.

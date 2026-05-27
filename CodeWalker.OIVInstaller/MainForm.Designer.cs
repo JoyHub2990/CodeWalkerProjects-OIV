@@ -313,17 +313,17 @@ namespace CodeWalker.OIVInstaller
             this.lblOivLabel.Name = "lblOivLabel";
             this.lblOivLabel.Size = new System.Drawing.Size(80, 15);
             this.lblOivLabel.TabIndex = 0;
-            this.lblOivLabel.Text = "OIV Package:";
+            this.lblOivLabel.Text = "Mod Package:";
             // 
             // txtOivPath
             // 
             this.txtOivPath.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
             this.txtOivPath.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.txtOivPath.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.txtOivPath.Location = new System.Drawing.Point(100, 3);
+            this.txtOivPath.Location = new System.Drawing.Point(85, 3);
             this.txtOivPath.Name = "txtOivPath";
             this.txtOivPath.ReadOnly = true;
-            this.txtOivPath.Size = new System.Drawing.Size(480, 23);
+            this.txtOivPath.Size = new System.Drawing.Size(495, 23);
             this.txtOivPath.TabIndex = 1;
             // 
             // btnBrowseOiv
@@ -354,10 +354,10 @@ namespace CodeWalker.OIVInstaller
             this.txtGameFolder.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
             this.txtGameFolder.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.txtGameFolder.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.txtGameFolder.Location = new System.Drawing.Point(100, 33);
+            this.txtGameFolder.Location = new System.Drawing.Point(85, 33);
             this.txtGameFolder.Name = "txtGameFolder";
             this.txtGameFolder.ReadOnly = true;
-            this.txtGameFolder.Size = new System.Drawing.Size(480, 23);
+            this.txtGameFolder.Size = new System.Drawing.Size(495, 23);
             this.txtGameFolder.TabIndex = 4;
             // 
             // btnBrowseGame
@@ -377,7 +377,7 @@ namespace CodeWalker.OIVInstaller
             this.lblGameStatus.AutoSize = true;
             this.lblGameStatus.Font = new System.Drawing.Font("Segoe UI", 8F);
             this.lblGameStatus.ForeColor = System.Drawing.Color.Gray;
-            this.lblGameStatus.Location = new System.Drawing.Point(100, 60);
+            this.lblGameStatus.Location = new System.Drawing.Point(85, 60);
             this.lblGameStatus.Name = "lblGameStatus";
             this.lblGameStatus.Size = new System.Drawing.Size(0, 13);
             this.lblGameStatus.TabIndex = 6;
@@ -387,7 +387,7 @@ namespace CodeWalker.OIVInstaller
             this.lblAsiStatus.AutoSize = true;
             this.lblAsiStatus.Font = new System.Drawing.Font("Segoe UI", 8F);
             this.lblAsiStatus.ForeColor = System.Drawing.Color.Gray;
-            this.lblAsiStatus.Location = new System.Drawing.Point(100, 78);
+            this.lblAsiStatus.Location = new System.Drawing.Point(85, 78);
             this.lblAsiStatus.Name = "lblAsiStatus";
             this.lblAsiStatus.Size = new System.Drawing.Size(0, 13);
             this.lblAsiStatus.TabIndex = 7;

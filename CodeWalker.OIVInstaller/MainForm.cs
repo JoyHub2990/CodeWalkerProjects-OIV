@@ -19,6 +19,7 @@ namespace CodeWalker.OIVInstaller
         private MarqueePainter _marquee;
         private Animator _formFadeAnimator;
         private Animator _formResizeAnimator;
+        private HeaderColorPulser _headerPulser;
 
         public MainForm()
         {
@@ -104,6 +105,21 @@ namespace CodeWalker.OIVInstaller
             return path;
         }
 
+        // The "Mod Package:" / "GTA V Folder:" labels are AutoSize, so their widths
+        // aren't known until first layout. Align both textboxes (and the status labels
+        // below them) just after the *wider* of the two labels so the gap is tight
+        // and consistent regardless of label text. Textboxes are anchored Top|Left|
+        // Right so changing .Left expands their Width to keep the Browse button gap.
+        private void AlignPathFieldsToLabels()
+        {
+            int rightOfWiderLabel = Math.Max(lblOivLabel.Right, lblGameFolderLabel.Right);
+            int textboxLeft = rightOfWiderLabel + 6;
+            txtOivPath.Left = textboxLeft;
+            txtGameFolder.Left = textboxLeft;
+            lblGameStatus.Left = textboxLeft;
+            lblAsiStatus.Left = textboxLeft;
+        }
+
         private void CenterEmptyStateContent()
         {
             if (panelEmptyState == null || panelEmptyState.IsDisposed) return;
@@ -182,6 +198,17 @@ namespace CodeWalker.OIVInstaller
             // pass (Load fires after the handle is created and initial layout has run)
             // before measuring + centering them.
             CenterEmptyStateContent();
+            AlignPathFieldsToLabels();
+
+            // Idle-state header animation — slow R→G→B→R rainbow loop while no
+            // package is loaded. Stops the moment a package is picked.
+            _headerPulser = new HeaderColorPulser(
+                panelHeader,
+                Color.FromArgb(220, 60, 60),    // red
+                Color.FromArgb(60, 180, 90),    // green
+                Color.FromArgb(0, 120, 215));   // blue (Windows accent)
+            _headerPulser.CycleMs = 12000;
+            _headerPulser.Start();
 
             // Check command line args for OIV file
             var args = Environment.GetCommandLineArgs();
@@ -631,6 +658,10 @@ namespace CodeWalker.OIVInstaller
 
             var meta = _package.Metadata;
             bool wasEmpty = panelEmptyState != null && panelEmptyState.Visible;
+
+            // A package is now loaded — halt the idle pulse so the theme color
+            // (default blue or the package's HeaderBackground) holds steady.
+            _headerPulser?.Stop();
 
             // Update window title
             this.Text = $"{meta.Name} - Package Installer";
@@ -1293,6 +1324,9 @@ namespace CodeWalker.OIVInstaller
             // Run the inverse header/form animation in lockstep with the crossfade.
             AnimateLayoutTransitionToEmpty(durationMs: 280);
 
+            // Restart the idle pulse now that we're back on the empty landing.
+            _headerPulser?.Start();
+
             // Install is disabled in the empty state until a package is picked again.
             btnInstall.Enabled = false;
             btnUninstall.Enabled = true;
@@ -1315,6 +1349,7 @@ namespace CodeWalker.OIVInstaller
             _marquee?.Dispose();
             _formFadeAnimator?.Dispose();
             _formResizeAnimator?.Dispose();
+            _headerPulser?.Dispose();
             base.OnFormClosing(e);
         }
     }
