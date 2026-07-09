@@ -103,13 +103,29 @@ namespace CodeWalker.OIVInstaller
             finally
             {
                 // Close all opened RPF files
-                foreach (var rpf in _openRpfs.Values)
+                Log("Closing RPF files...");
+                foreach (var kvp in _openRpfs)
                 {
-                    // RPF files don't need explicit closing in CodeWalker's implementation
+                    var rpf = kvp.Value;
+                    Log($"  Closing: {rpf.FilePath}");
+                    // Verify file can be reopened (check for locks)
+                    try
+                    {
+                        using (var fs = File.Open(rpf.FilePath, FileMode.Open, FileAccess.Read))
+                        {
+                            Log($"  VERIFIED: RPF file accessible after install");
+                            fs.Close();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"  WARNING: RPF file may be locked: {ex.Message}");
+                    }
                 }
                 _openRpfs.Clear();
                 _logWriter?.Dispose();
                 _logWriter = null;
+                Log("Installation complete - all RPF files closed");
             }
         }
 
@@ -255,6 +271,10 @@ namespace CodeWalker.OIVInstaller
                 }
 
                 // Add or replace the file
+                Log($"  RPF Path: {rpf.FilePath}");
+                Log($"  Target Dir: {targetDir.Path}");
+                Log($"  Dest File: {destFileName}");
+                Log($"  Data Size: {fileData.Length} bytes");
                 
                 // --- BACKUP LOGIC (RPF) ---
                 var existingFile = targetDir.Files?.FirstOrDefault(f => f.Name.Equals(destFileName, StringComparison.OrdinalIgnoreCase));
@@ -280,7 +300,21 @@ namespace CodeWalker.OIVInstaller
                 }
                 // ---------------------------
 
-                RpfFile.CreateFile(targetDir, destFileName, fileData, overwrite: true);
+                Log($"  Creating file in RPF...");
+                var createdEntry = RpfFile.CreateFile(targetDir, destFileName, fileData, overwrite: true);
+                Log($"  Created entry: {createdEntry?.Name}, offset: {createdEntry?.FileOffset}");
+                
+                var verifyFile = targetDir.Files?.FirstOrDefault(f => f.Name.Equals(destFileName, StringComparison.OrdinalIgnoreCase));
+                if (verifyFile != null)
+                {
+                    Log($"  VERIFIED: File in directory listing");
+                    Log($"  Offset: {verifyFile.FileOffset}, Size: {verifyFile.GetFileSize()}");
+                }
+                else
+                {
+                    Log($"  WARNING: File NOT in directory listing!");
+                }
+                
                 Log($"  Added {destFileName} ({fileData.Length} bytes)");
             }
             catch (Exception ex)
@@ -1387,27 +1421,33 @@ namespace CodeWalker.OIVInstaller
             {
                 if (ext == ".ymt")
                 {
-                    var f = new YmtFile(); f.Load(fileData, fileEntry);
+                    var f = new YmtFile(); 
+                    if (fileEntry != null) f.Load(fileData, fileEntry);
+                    else f.Load(fileData);
                     xmlContent = MetaXml.GetXml(f, out virtualXmlName);
                 }
                 else if (ext == ".ymf")
                 {
-                    var f = new YmfFile(); f.Load(fileData, null);
+                    var f = new YmfFile(); f.Load(fileData, fileEntry);
                     xmlContent = MetaXml.GetXml(f, out virtualXmlName);
                 }
                 else if (ext == ".ymap")
                 {
-                    var f = new YmapFile(); f.Load(fileData, null);
+                    var f = new YmapFile(); 
+                    if (fileEntry != null) f.Load(fileData, fileEntry);
+                    else f.Load(fileData);
                     xmlContent = MetaXml.GetXml(f, out virtualXmlName);
                 }
                 else if (ext == ".ytyp")
                 {
-                    var f = new YtypFile(); f.Load(fileData, null);
+                    var f = new YtypFile(); 
+                    if (fileEntry != null) f.Load(fileData, fileEntry);
+                    else f.Load(fileData);
                     xmlContent = MetaXml.GetXml(f, out virtualXmlName);
                 }
                 else if (ext == ".pso")
                 {
-                    var f = new JPsoFile(); f.Load(fileData, null);
+                    var f = new JPsoFile(); f.Load(fileData, fileEntry);
                     xmlContent = MetaXml.GetXml(f, out virtualXmlName);
                 }
                 else if (ext == ".xml")

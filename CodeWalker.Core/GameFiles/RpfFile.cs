@@ -1769,11 +1769,13 @@ namespace CodeWalker.GameFiles
                 using (var bw = new BinaryWriter(fstream))
                 {
                     parent.InsertFileSpace(bw, entry);
+                    RefreshParentChainHeaders(bw, parent);
                     long bbeg = parent.StartPos + ((long)entry.FileOffset * 512);
                     long bend = bbeg + ((long)GetBlockCount(entry.GetFileSize()) * 512);
                     fstream.Position = bbeg;
                     fstream.Write(data, 0, data.Length);
-                    WritePadding(fstream, bend); //write 0's until the end of the block.
+                    WritePadding(fstream, bend);
+                    fstream.Flush();
                 }
             }
 
@@ -1908,6 +1910,7 @@ namespace CodeWalker.GameFiles
                 {
                     parent.EnsureAllEntries();
                     parent.WriteHeader(bw);
+                    RefreshParentChainHeaders(bw, parent);
                 }
             }
 
